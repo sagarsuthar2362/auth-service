@@ -17,3 +17,7 @@ export const findUserById = async (userId) => {
 export const updateRefreshToken = async (userId, refreshToken) => {
   await User.findByIdAndUpdate(userId, { refreshToken });
 };
+
+export const removeRefreshToken = async (userId) => {
+  await User.findByIdAndUpdate(userId, { refreshToken: null });
+};

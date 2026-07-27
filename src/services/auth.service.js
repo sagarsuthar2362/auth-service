@@ -109,8 +109,5 @@ export const logout = async (token) => {
     throw new ApiError(401, "Unauthorized access");
   }
 
-  user.refreshToken = null;
-  user.save();
-
-  return;
+  await userRepository.removeRefreshToken(user._id);
 };

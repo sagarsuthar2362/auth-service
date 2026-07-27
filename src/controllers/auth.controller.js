@@ -63,8 +63,8 @@ export const logout = async (req, res, next) => {
 
     await authService.logout(token);
 
-    res.clearCookie("refreshToken");
-    res.clearCookie("accessToken");
+    res.clearCookie("refreshToken", cookieOptions);
+    res.clearCookie("accessToken", cookieOptions);
 
     return res
       .status(200)

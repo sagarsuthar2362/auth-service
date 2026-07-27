@@ -1,7 +1,7 @@
 import bcrypt from "bcrypt";
-import User from "../models/user.model.js";
 import ApiError from "../utils/ApiError.js";
-import { use } from "bcrypt/promises.js";
+import * as userRepository from "../repositories/user.repository.js";
+import jwt from "jsonwebtoken";
 
 export const register = async ({ name, username, email, password }) => {
   if (!name || !username || !email || !password) {
@@ -9,11 +9,10 @@ export const register = async ({ name, username, email, password }) => {
   }
 
   // check if user exist
-  const existingUser = await User.findOne({
-    $or: [{ username }, { email }],
-  });
-
-  console.log(existingUser);
+  const existingUser = await userRepository.findUserByUsernameOrEmail(
+    username,
+    email,
+  );
 
   if (existingUser) {
     throw new ApiError(409, "user already exists");
@@ -23,21 +22,12 @@ export const register = async ({ name, username, email, password }) => {
   const hashedPassword = await bcrypt.hash(password, 10);
 
   // create user
-  const user = await User.create({
+  return await userRepository.createUser({
     name,
     username,
     email,
     password: hashedPassword,
   });
-
-  // return created user
-  return {
-    id: user._id,
-    name: user.name,
-    username: user.username,
-    email: user.email,
-    role: user.role,
-  };
 };
 
 export const login = async ({ username, email, password }) => {
@@ -47,9 +37,7 @@ export const login = async ({ username, email, password }) => {
   }
 
   // check user exists
-  const user = await User.findOne({
-    $or: [{ username }, { email }],
-  });
+  const user = await userRepository.findUserByUsernameOrEmail(username, email);
 
   if (!user) {
     throw new ApiError(401, "Invalid credentials");
@@ -63,10 +51,66 @@ export const login = async ({ username, email, password }) => {
   }
 
   return {
-    id: user._id,
+    _id: user._id,
     name: user.name,
     username: user.username,
     email: user.email,
     role: user.role,
   };
+};
+
+export const generateAccessAndRefreshToken = async (userId) => {
+  const user = await userRepository.findUserById(userId);
+
+  if (!user) {
+    throw new ApiError(404, "user not found");
+  }
+
+  const refreshToken = user.generateRefreshToken();
+  const accessToken = user.generateAccessToken();
+
+  await userRepository.updateRefreshToken(userId, refreshToken);
+
+  return { refreshToken, accessToken };
+};
+
+export const refreshTokens = async (token) => {
+  if (!token) {
+    throw new ApiError(401, "Refresh token is missing");
+  }
+
+  const decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+  const user = await userRepository.findUserById(decoded._id);
+
+  if (!user) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  if (token !== user.refreshToken) {
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  const { refreshToken, accessToken } = await generateAccessAndRefreshToken(
+    user._id,
+  );
+
+  return { refreshToken, accessToken };
+};
+
+export const logout = async (token) => {
+  if (!token) {
+    throw new ApiError(401, "Unauthorized access");
+  }
+
+  const decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+  const user = await userRepository.findUserById(decoded._id);
+
+  if (!user) {
+    throw new ApiError(401, "Unauthorized access");
+  }
+
+  user.refreshToken = null;
+  user.save();
+
+  return;
 };
